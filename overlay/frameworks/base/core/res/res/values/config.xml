@@ -440,8 +440,8 @@
          and one pSIM) -->
     <integer name="config_num_physical_slots">2</integer>
 
-    <!-- Whether the device has outdated qti-telephony-common.jar -->
-    <bool name="config_oldQtiTelephony">false</bool>
+    <!-- Whether the device has outdated qti-telephony-common.jar
+    <bool name="config_oldQtiTelephony">false</bool> -->
 
     <!-- Add buttons customization -->
     <integer name="config_deviceHardwareKeys">83</integer>
