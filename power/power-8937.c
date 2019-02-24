@@ -131,16 +131,9 @@ static void set_power_profile(int profile) {
     current_power_profile = profile;
 }
 
-static void process_activity_launch_hint(void *data)
+static void process_activity_launch_hint(int state)
 {
     static int lock_handle = -1;
-    int state;
-
-    if (data) {
-        state = *((int*)data);
-    } else {
-        return;
-    }
 
     if (state) {
         int resource_values[] = {
@@ -161,10 +154,9 @@ static void process_activity_launch_hint(void *data)
     }
 }
 
-static void process_video_encode_hint(void *metadata)
+static void process_video_encode_hint(int state)
 {
     char governor[80];
-    int32_t state = *((int32_t*)metadata);
 
     ALOGI("Got process_video_encode_hint");
 
@@ -208,7 +200,7 @@ static void process_video_encode_hint(void *metadata)
     }
 }
 
-int power_hint_override(power_hint_t hint, void *data)
+int power_hint_override(power_hint_t hint, int data)
 {
     int duration;
     int resources_interaction_fling_boost[] = {
@@ -216,16 +208,25 @@ int power_hint_override(power_hint_t hint, void *data)
         SCHED_BOOST_ON_V3, 0x1,
     };
 
+    if (hint == POWER_HINT_SET_PROFILE) {
+        set_power_profile(data);
+        return HINT_HANDLED;
+    }
+
+    // Skip other hints in high/low power mode
+    if (current_power_profile == PROFILE_POWER_SAVE ||
+            current_power_profile == PROFILE_HIGH_PERFORMANCE) {
+        return HINT_HANDLED;
+    }
+
     switch (hint) {
         case POWER_HINT_INTERACTION:
-            if (data) {
-                duration = *((int*)data);
-                if (duration > MAX_INTERACTIVE_DURATION)
-                    duration = MAX_INTERACTIVE_DURATION;
-                if (duration >= MIN_FLING_DURATION) {
-                    interaction(duration, ARRAY_SIZE(resources_interaction_fling_boost),
-                            resources_interaction_fling_boost);
-                }
+            duration = data;
+            if (duration > MAX_INTERACTIVE_DURATION)
+                duration = MAX_INTERACTIVE_DURATION;
+            if (duration >= MIN_FLING_DURATION) {
+                interaction(duration, ARRAY_SIZE(resources_interaction_fling_boost),
+                        resources_interaction_fling_boost);
             }
             return HINT_HANDLED;
         case POWER_HINT_LAUNCH:
