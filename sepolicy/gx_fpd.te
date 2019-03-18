@@ -1,5 +1,5 @@
 type gx_fpd, domain;
-type gx_fpd_exec, exec_type, file_type,vendor_file_type;
+type gx_fpd_exec, exec_type, vendor_file_type, file_type;
 
 # gx_fpd
 init_daemon_domain(gx_fpd)
@@ -10,12 +10,11 @@ r_dir_file(gx_fpd, firmware_file)
 # add services
 allow gx_fpd gx_fpd_service:service_manager { add find };
 
-# allow HAL module to read dir contents
+# allow storing goodix data
+# TODO: Remove? This may not be needed since tee handles goodix data
 allow gx_fpd system_data_file:dir create_dir_perms;
-allow gx_fpd gx_fpd_data_file:file create_file_perms;
-
-# allow HAL module to read/write/unlink contents of this dir
-allow gx_fpd gx_fpd_data_file:dir create_dir_perms;
+allow gx_fpd { persist_drm_file gx_fpd_data_file }:dir create_dir_perms;
+allow gx_fpd { persist_drm_file gx_fpd_data_file }:file create_file_perms;
 
 # Need to add auth tokens to KeyStore
 use_keystore(gx_fpd)
@@ -59,5 +58,3 @@ set_prop(gx_fpd, system_prop)
 
 # Ignore all logging requests
 dontaudit gx_fpd storage_file:dir search;
-
-allow gx_fpd self:capability dac_override;
