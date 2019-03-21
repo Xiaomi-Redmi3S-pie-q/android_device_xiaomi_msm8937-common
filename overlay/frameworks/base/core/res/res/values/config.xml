@@ -600,8 +600,11 @@
 
     <!-- Whether the device has outdated qti-telephony-common.jar -->
     <bool name="config_oldQtiTelephony">false</bool>
+   
+    <!-- Enable NightLight -->
+    <bool name="config_nightDisplayAvailable">true</bool>
 
-<!-- Default values for LiveDisplay -->
-    <bool name="config_defaultColorEnhancement">false</bool>
+    <!-- Whether device ignores the RSSNR signal implementation -->
+    <bool name="config_ignoreRssnrSignalLevel">true</bool>
 
 </resources>
