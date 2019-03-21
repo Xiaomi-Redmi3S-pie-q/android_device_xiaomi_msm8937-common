@@ -97,6 +97,7 @@ ro.build.shutdown_timeout=0
 
 # SdcardFs
 ro.sys.sdcardfs=true
+ro.storaged.event.interval=999999
 
 # Media
 media.msm8956hw=0
