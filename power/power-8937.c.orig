@@ -43,6 +43,7 @@
 #include <hardware/power.h>
 
 #include "utils.h"
+#include "metadata-defs.h"
 #include "hint-data.h"
 #include "performance.h"
 #include "power-common.h"
@@ -50,7 +51,6 @@
 #define MAX_INTERACTIVE_DURATION 5000
 #define MIN_INTERACTIVE_DURATION 500
 #define MIN_FLING_DURATION 1100
-#define MAX_LAUNCH_DURATION 5000
 
 static int saved_interactive_mode = -1;
 static int display_hint_sent;
@@ -131,32 +131,10 @@ static void set_power_profile(int profile) {
     current_power_profile = profile;
 }
 
-static void process_activity_launch_hint(int state)
-{
-    static int lock_handle = -1;
-
-    if (state) {
-        int resource_values[] = {
-            SCHED_BOOST_ON_V3, 0x1,
-            MIN_FREQ_BIG_CORE_0, 0x5DC,
-            ALL_CPUS_PWR_CLPS_DIS_V3, 0x1,
-            CPUS_ONLINE_MIN_BIG, 0x4,
-            GPU_MIN_PWRLVL_BOOST, 0x1,
-        };
-        lock_handle = interaction_with_handle(lock_handle, MAX_LAUNCH_DURATION,
-                ARRAY_SIZE(resource_values), resource_values);
-    } else {
-        // release lock early since launch has finished
-        if (CHECK_HANDLE(lock_handle)) {
-            release_request(lock_handle);
-            lock_handle = -1;
-        }
-    }
-}
-
-static void process_video_encode_hint(int state)
+static void process_video_encode_hint(void *metadata)
 {
     char governor[80];
+    struct video_encode_metadata_t video_encode_metadata;
 
     ALOGI("Got process_video_encode_hint");
 
@@ -175,7 +153,22 @@ static void process_video_encode_hint(int state)
         }
     }
 
-    if (state) {
+    if (!metadata) {
+        return;
+    }
+
+    /* Initialize encode metadata struct fields. */
+    memset(&video_encode_metadata, 0, sizeof(struct video_encode_metadata_t));
+    video_encode_metadata.state = -1;
+    video_encode_metadata.hint_id = DEFAULT_VIDEO_ENCODE_HINT_ID;
+
+    if (parse_video_encode_metadata((char *)metadata,
+                &video_encode_metadata) == -1) {
+        ALOGE("Error occurred while parsing metadata.");
+        return;
+    }
+
+    if (video_encode_metadata.state == 1) {
         if (is_interactive_governor(governor)) {
             /* Sched_load and migration_notif*/
             int resource_values[] = {
@@ -187,29 +180,37 @@ static void process_video_encode_hint(int state)
                 INT_OP_CLUSTER1_TIMER_RATE, BIG_LITTLE_TR_MS_40
             };
             if (!video_encode_hint_sent) {
-                perform_hint_action(DEFAULT_VIDEO_ENCODE_HINT_ID,
+                perform_hint_action(video_encode_metadata.hint_id,
                         resource_values, ARRAY_SIZE(resource_values));
                 video_encode_hint_sent = 1;
             }
         }
-    } else {
+    } else if (video_encode_metadata.state == 0) {
         if (is_interactive_governor(governor)) {
-            undo_hint_action(DEFAULT_VIDEO_ENCODE_HINT_ID);
+            undo_hint_action(video_encode_metadata.hint_id);
             video_encode_hint_sent = 0;
         }
     }
 }
 
-int power_hint_override(power_hint_t hint, int data)
+int power_hint_override(power_hint_t hint, void *data)
 {
     int duration;
+    int resources_launch_main[] = {
+        SCHED_BOOST_ON_V3, 0x1,
+        MIN_FREQ_BIG_CORE_0, 0x5DC,
+        ALL_CPUS_PWR_CLPS_DIS_V3, 0x1,
+        CPUS_ONLINE_MIN_BIG, 0x4,
+        GPU_MIN_PWRLVL_BOOST, 0x1,
+    };
+
     int resources_interaction_fling_boost[] = {
         MIN_FREQ_BIG_CORE_0, 0x514,
         SCHED_BOOST_ON_V3, 0x1,
     };
 
     if (hint == POWER_HINT_SET_PROFILE) {
-        set_power_profile(data);
+        set_power_profile(*(int32_t *)data);
         return HINT_HANDLED;
     }
 
@@ -220,17 +221,21 @@ int power_hint_override(power_hint_t hint, int data)
     }
 
     switch (hint) {
-        case POWER_HINT_INTERACTION:
-            duration = data;
-            if (duration > MAX_INTERACTIVE_DURATION)
-                duration = MAX_INTERACTIVE_DURATION;
-            if (duration >= MIN_FLING_DURATION) {
-                interaction(duration, ARRAY_SIZE(resources_interaction_fling_boost),
-                        resources_interaction_fling_boost);
+    	case POWER_HINT_INTERACTION:
+            if (data) {
+                duration = *((int*)data);
+                if (duration > MAX_INTERACTIVE_DURATION)
+                    duration = MAX_INTERACTIVE_DURATION;
+                if (duration >= MIN_FLING_DURATION) {
+                    interaction(duration, ARRAY_SIZE(resources_interaction_fling_boost),
+                            resources_interaction_fling_boost);
+                }
             }
             return HINT_HANDLED;
         case POWER_HINT_LAUNCH:
-            process_activity_launch_hint(data);
+            duration = 2000;
+            interaction(duration, ARRAY_SIZE(resources_launch_main),
+                    resources_launch_main);
             return HINT_HANDLED;
         case POWER_HINT_VIDEO_ENCODE:
             process_video_encode_hint(data);
@@ -245,6 +250,7 @@ int set_interactive_override(int on)
 {
     char governor[80];
     char tmp_str[NODE_MAX];
+    struct video_encode_metadata_t video_encode_metadata;
     int rc;
 
     ALOGI("Got set_interactive hint");
